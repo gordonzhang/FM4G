@@ -5,6 +5,7 @@ import sys
 import os
 import random
 import copy
+import time
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ from PyQt4.QtGui import *
 
 mpl.rc("figure", facecolor="white")
 
-DPI_default = 100
+DPI_default = 93
 
 def irrF(values):
     res = np.roots(values[::-1])
@@ -39,14 +40,13 @@ class boxResult(QFrame):
     def __init__(self, text=None, result=None, parent=None):
         super(boxResult, self).__init__(parent)
         self.setFixedSize(240,150)
-        self.setStyleSheet('''color: white; background-color: #5e6e8c; font: 20px; border-radius: 20px;''')
+        self.setStyleSheet('''color: white; background-color: #5e6e8c; font: 18px; border-radius: 15px;''')
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignVCenter)
 
         titleLabel = QLabel(text)
         titleLabel.setAlignment(Qt.AlignHCenter)
         self.resultLabel = QLabel(result)
-        self.resultLabel.setStyleSheet('''font: 26px''')
         self.resultLabel.setAlignment(Qt.AlignHCenter)
         
         layout.addWidget(titleLabel)
@@ -331,6 +331,7 @@ class FModel(QMainWindow):
     def __init__(self, parent=None):
         super(FModel, self).__init__(parent)
         self.initUI()
+        
 
     def initUI(self):
         self.setStyleSheet(
@@ -349,7 +350,7 @@ class FModel(QMainWindow):
                 QPushButton{
                 padding-top: 6px;
                 padding-bottom: 6px;
-                border-radius: 8px;
+                border-radius: 6px;
                 background-color: #445669;
                 color: #fcfeff;
                 border: 2px solid #ababab
@@ -392,7 +393,6 @@ class FModel(QMainWindow):
 
 
 
-
                 QTabWidget::pane { /* The tab widget frame */
                 border-top: 2px solid #9B9B9B;
                 position: absolute;
@@ -406,7 +406,7 @@ class FModel(QMainWindow):
                 QTabBar::tab {
                 background: #d5dbe3;
                 color: #9ba3ab;
-                font: bold 18px;
+                font: bold 16px;
                 border: 2px solid #C2C7CB;
                 border-bottom-color: #C2C7CB; /* same as the pane color */
                 border-top-left-radius: 8px;
@@ -419,7 +419,7 @@ class FModel(QMainWindow):
                 QTabBar::tab:selected, QTabBar::tab:hover {
                 background: white;
                 color: #404347;
-                font: bold 18px;
+                font: bold 16px;
                 }
 
                 QTabBar::tab:selected {
@@ -442,16 +442,10 @@ class FModel(QMainWindow):
 
         reportBtn = QPushButton('Generate Report')
         reportBtn.setFixedWidth(150)
-        reportBtn.setStyleSheet('''background-color: #445669;
-                color: #fcfeff;
-                border-radius: 10px;
-                border: 2px solid #ababab;
-                font: 17px;
-                padding: 5px;''')
-        reportBtn.setStyleSheet('''pressed:{background-color: #538bc2;}''')
 
         reportBtn.clicked.connect(self.generateReport)
         leftWidget = QWidget()
+        leftWidget.setFixedWidth(550)
         leftLayout = QVBoxLayout()
         leftWidget.setLayout(leftLayout)
         leftLayout.addWidget(reportBtn)
@@ -504,10 +498,12 @@ class FModel(QMainWindow):
 
     def calculateResultCurrentPrice(self, **kwargs):
         # unpack parameters from **kwargs
-        currentPrice = kwargs['currentPrice']; taxRate = kwargs['taxRate']; royaltyRate = kwargs['royaltyRate']; rental = kwargs['rental']; bonus = kwargs['bonus'];
-        yearlyCPI = kwargs['yearlyCPI']; monthlyCPI = kwargs['monthlyCPI']; fixedOpertExpense = kwargs['fixedOpertExpense']; varOpertExpense = kwargs['varOpertExpense'];
-        capitalCost = kwargs['capitalCost']; tangibleCapitalPerc = kwargs['tangibleCapitalPerc']; abandonCost = kwargs['abandonCost']; wellData = kwargs['wellData'];
-        recoverableVol = kwargs['recoverableVol']; maxNumOfProducingWells = kwargs['maxNumOfProducingWells']
+        currentPrice = kwargs.pop('currentPrice'); taxRate = kwargs.pop('taxRate'); royaltyRate = kwargs.pop('royaltyRate'); rental = kwargs.pop('rental'); bonus = kwargs.pop('bonus');
+        yearlyCPI = kwargs.pop('yearlyCPI'); monthlyCPI = kwargs.pop('monthlyCPI'); fixedOpertExpense = kwargs.pop('fixedOpertExpense'); varOpertExpense = kwargs.pop('varOpertExpense');
+        capitalCost = kwargs.pop('capitalCost'); tangibleCapitalPerc = kwargs.pop('tangibleCapitalPerc'); abandonCost = kwargs.pop('abandonCost'); wellData = kwargs.pop('wellData');
+        recoverableVol = kwargs.pop('recoverableVol'); maxNumOfProducingWells = kwargs.pop('maxNumOfProducingWells')
+        if kwargs:
+            raise TypeError('Unexpected **kwargs: %r' % kwargs)
 
         try:
             succRate = kwargs['succRate']
@@ -567,20 +563,20 @@ class FModel(QMainWindow):
 
         installYears = set()
         for x in wellData: installYears.add(x[0])
-        monthlyFieldProdVol = [0 for _ in range(maxMonth)]
+        monthlyFieldProdVolList = [0 for _ in range(maxMonth)]
         monthlyNumOfWorkingWells = [0 for _ in range(maxMonth)]
         
         # calculate producing volume and # of working wells of each month
         for i in range(maxMonth):
             for x in monthlyEachWellProdVolTable:
-                monthlyFieldProdVol[i] += x[i]
+                monthlyFieldProdVolList[i] += x[i]
                 monthlyNumOfWorkingWells[i] += np.sign(x[i])
         yearlyELTFlagList = [1 for _ in range(maxYear)]
 
         monthlyOpertCashflow = [0 for _ in range(maxMonth)]
         for i in range(maxMonth):
-            monthlyRevenue = monthlyFieldProdVol[i] * currentPrice * (1 - royaltyRate) * monthlyCPI**i
-            monthlyOpertExpense = (monthlyNumOfWorkingWells[i]*fixedOpertExpense/12 + varOpertExpense*monthlyFieldProdVol[i])\
+            monthlyRevenue = monthlyFieldProdVolList[i] * currentPrice * (1 - royaltyRate) * monthlyCPI**i
+            monthlyOpertExpense = (monthlyNumOfWorkingWells[i]*fixedOpertExpense/12 + varOpertExpense*monthlyFieldProdVolList[i])\
                                   *monthlyCPI**i
             monthlyOpertCashflow[i] = monthlyRevenue - monthlyOpertExpense
 
@@ -676,7 +672,7 @@ class FModel(QMainWindow):
         monthlyFieldAbandonCostList = copy.copy(monthlyFieldRevenueList)
 
         yearlyFieldRevenueList = [0 for _ in range(maxYear)]
-        yearlyFieldVolList = copy.copy(yearlyFieldRevenueList)
+        yearlyFieldProdVolList = copy.copy(yearlyFieldRevenueList)
         yearlyFieldCapitalCostList = copy.copy(yearlyFieldRevenueList)
         yearlyFieldIntangibleCapitalCostList = copy.copy(yearlyFieldRevenueList)
         yearlyTangibleCapitalDepreciationList = copy.copy(yearlyFieldRevenueList)
@@ -691,7 +687,10 @@ class FModel(QMainWindow):
         accumulatedTaxLossList = copy.copy(yearlyFieldRevenueList)
         yearlyCostList = copy.copy(yearlyFieldRevenueList)
 
+        exposure = 0
+        maxExposure = 0
 
+        # loop each well
         for monthlyVolList in monthlyEachWellProdVolTable:
             revenueList, capitalCostList, yearlyTangibleCapitalDepreciationListTemp, intangibleCapitalCostList, royaltyList, bonusList, opertCostList, abandonCostList = wellVol2Cash(monthlyVolList)
 
@@ -705,6 +704,7 @@ class FModel(QMainWindow):
             monthlyFieldAbandonCostList = [x+y for x,y in zip(monthlyFieldAbandonCostList, abandonCostList)]
             yearlyTangibleCapitalDepreciationList = [x+y for x,y in zip(yearlyTangibleCapitalDepreciationList, yearlyTangibleCapitalDepreciationListTemp)]
         
+        # convert monthly data into yearly data
         for i in range(maxYear):
             yearlyFieldRevenueList[i] = sum(monthlyFieldRevenueList[i*12:i*12+12])
             yearlyFieldCapitalCostList[i] = sum(monthlyFieldCapitalCostList[i*12:i*12+12])
@@ -713,6 +713,7 @@ class FModel(QMainWindow):
             yearlyFieldBonusList[i] = sum(monthlyFieldBonusList[i*12:i*12+12])
             yearlyFieldOpertCostList[i] = sum(monthlyFieldOpertCostList[i*12:i*12+12])
             yearlyFieldAbandonCostList[i] = sum(monthlyFieldAbandonCostList[i*12:i*12+12])
+            yearlyFieldProdVolList[i] = sum(monthlyFieldProdVolList[i*12:i*12+12])
 
             yearlyTaxableProfit = yearlyFieldRevenueList[i] - yearlyFieldIntangibleCapitalCostList[i] - yearlyFieldRoyaltyList[i] - yearlyFieldBonusList[i]\
                                      - yearlyFieldOpertCostList[i] - yearlyFieldAbandonCostList[i] - yearlyTangibleCapitalDepreciationList[i]\
@@ -727,15 +728,16 @@ class FModel(QMainWindow):
             yearlyNetCashflowList[i] = yearlyFieldRevenueList[i] - yearlyFieldCapitalCostList[i] - yearlyFieldRoyaltyList[i] - yearlyFieldBonusList[i]\
                                   - yearlyFieldOpertCostList[i] - yearlyFieldAbandonCostList[i] - yearlyTaxList[i] - rental
             yearlyRealNetCashflowList[i] = yearlyNetCashflowList[i] / yearlyCPI**i
+            # track maximum exposure
+            exposure += yearlyRealNetCashflowList[i]
+            if exposure < maxExposure:
+                maxExposure = exposure
             yearlyCostList[i] = (yearlyFieldBonusList[i] + yearlyFieldOpertCostList[i] + rental) / (1-royaltyRate)
 
-        for i in range(maxYear):
-            yearlyFieldVolList[i] = sum(monthlyFieldProdVol[i:i+12])
-
         # Prepare results
-        yearlyCostPerBarrelList = [a/b for a,b in zip(yearlyCostList, yearlyFieldVolList)]
+        yearlyCostPerBarrelList = [a/b for a,b in zip(yearlyCostList, yearlyFieldProdVolList)]
 
-        NPV = (sum(yearlyRealNetCashflowList))
+        NPV = sum(yearlyRealNetCashflowList)
 
         for i in xrange(len(yearlyRealNetCashflowList)):
             if yearlyRealNetCashflowList[0] > 0:
@@ -746,17 +748,6 @@ class FModel(QMainWindow):
                 break
         else:
             breakevenYear = -1
-
-        # if all(item >= 0 for item in yearlyNetCashflowList) or all(item < 0 for item in yearlyNetCashflowList):
-        #     irr = None
-        # else:
-        #     irr = np.irr(yearlyNetCashflowList+[0.1**10])
-
-        irr = irrF(yearlyNetCashflowList+[0.000001])
-
-        print(NPV)
-        print(irr)
-        print(yearlyNetCashflowList)
 
         return monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflowList, yearlyFieldRevenueList, yearlyFieldCapitalCostList,\
                yearlyFieldRoyaltyList, yearlyFieldBonusList, yearlyFieldOpertCostList, yearlyFieldAbandonCostList, yearlyTaxList,\
@@ -1339,7 +1330,7 @@ class ParameterBox(QFrame):
 class ResultTab(QFrame):
     def __init__(self, parent=None):
         super(ResultTab, self).__init__(parent)
-        self.setFixedSize(1024,768)
+        self.setMinimumWidth(700)
         self.initResultTab()
 
     def initResultTab(self):
@@ -1356,7 +1347,7 @@ class ResultTab(QFrame):
 
                 QLabel{
                 color: #4a4a4a;
-                font: bold 24px;
+                font: bold 20px;
                 }
             ''')
 
@@ -1375,9 +1366,9 @@ class ResultTab(QFrame):
         self.BreakevenBox = boxResult('Year of Breakeven')
         topResultBox = QHBoxLayout()
         topResultBox.addWidget(self.irrBox)
-        topResultBox.addSpacing(25)
+        topResultBox.addSpacing(20)
         topResultBox.addWidget(self.NPVBox)
-        topResultBox.addSpacing(25)
+        topResultBox.addSpacing(20)
         topResultBox.addWidget(self.BreakevenBox)
 
         self.IntervalChart = IntervalChart()
@@ -1386,11 +1377,11 @@ class ResultTab(QFrame):
         self.irrChart = irrChart()
         self.NPVChart = NPVChart()
 
-        subLayout0.addSpacing(20)
+        subLayout0.addSpacing(0)
         subLayout0.addWidget(QLabel('Summary:'))
-        subLayout0.addSpacing(15)
+        subLayout0.addSpacing(10)
         subLayout0.addLayout(topResultBox)
-        subLayout0.addSpacing(50)
+        subLayout0.addSpacing(30)
 
         subLayout0.addWidget(QLabel('Sensitivity Analysis:'))
         subLayout0.addWidget(self.IntervalChart)
@@ -1427,8 +1418,17 @@ class HBox(QHBoxLayout):
 
 if __name__ == "__main__":
     app = QApplication([])
+    # Create and display the splash screen
+    splash_pix = QPixmap('/Users/yunyunzhang/Desktop/PythonTest/quokka.jpg')
+    splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+    splash.setMask(splash_pix.mask())
+    splash.show()
+    # Simulate something that takes time
+    time.sleep(1)
     win = FModel()
     win.show()
+    splash.finish(win)
+
     sys.exit(app.exec_())
 
 
