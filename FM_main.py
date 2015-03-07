@@ -1033,7 +1033,7 @@ class ParameterBox(QFrame):
 
         layout.addWidget(self.scrollArea)
         self.setLayout(layout)
-        print 'lvmengliu is a benben'
+
         nc = 4  # column number
         # set default values
         currentPrice = 50
