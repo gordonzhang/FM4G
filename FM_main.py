@@ -8,7 +8,6 @@ import copy
 import time
 
 import numpy as np
-import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib import mlab as ml
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
@@ -334,18 +333,15 @@ class FModel(QMainWindow):
         
 
     def initUI(self):
-        self.setStyleSheet(
-            '''
+        self.setStyleSheet('''
                 QMainWindow{
                 background-color: white;
                 }
 
                 QSplitter{
                 background-color: white;
-                padding-top: 8px;
+                padding-top: 5px;
                 }
-
-                
 
                 QPushButton{
                 padding-top: 6px;
@@ -429,6 +425,7 @@ class FModel(QMainWindow):
             ''')
         
         self.setWindowTitle('AE&E Financial Model v0.0.2')
+        self.setWindowState(Qt.WindowMaximized | Qt.WindowActive)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setStretchFactor(0,0)
         self.splitter.setStretchFactor(1,1)
@@ -445,7 +442,7 @@ class FModel(QMainWindow):
 
         reportBtn.clicked.connect(self.generateReport)
         leftWidget = QWidget()
-        leftWidget.setFixedWidth(550)
+        leftWidget.setFixedWidth(620)
         leftLayout = QVBoxLayout()
         leftWidget.setLayout(leftLayout)
         leftLayout.addWidget(reportBtn)
@@ -483,18 +480,27 @@ class FModel(QMainWindow):
 
     def calculateAllResults(self, currentPrice, priceList, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense, varOpertExpense,
                             capitalCost, tangibleCapitalPerc, abandonCost, wellData, lowestPrice, highestPrice, recoverableVol, maxNumOfProducingWells):
-        monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflow, yearlyFieldRevenueList, yearlyFieldCapitalCostList,\
-        yearlyFieldRoyaltyList, yearlyFieldBonusList, yearlyFieldOpertCostList, yearlyFieldAbandonCostList, yearlyTaxList,\
-        monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
-        monthlyFieldOpertCostList, monthlyFieldAbandonCostList\
-        = self.calculateResultCurrentPrice(currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus, yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI,
-                                            fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
-                                            abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
-        # print yearlyFieldRevenueList
+        NPVList = self.simulateResultCurrentPrice(nSimulation=1000, currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus, yearlyCPI=yearlyCPI,
+                                                  monthlyCPI=monthlyCPI, fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
+                                                  abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
+        NPVList = [x/1000000 for x in NPVList]
+        plt.hist(NPVList, bins=20, normed=1, facecolor='green', alpha=0.95)
+        plt.show()
         x = self.calculateResultSensitivity()
         x = self.calculateResultAEE()
 
-
+    def simulateResultCurrentPrice(self, nSimulation, currentPrice, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense,
+                                   varOpertExpense, capitalCost, tangibleCapitalPerc, abandonCost, wellData, recoverableVol, maxNumOfProducingWells):
+        NPVList = [0 for _ in xrange(nSimulation)]
+        for i in xrange(nSimulation):
+            monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflow, yearlyFieldRevenueList, yearlyFieldCapitalCostList,\
+            yearlyFieldRoyaltyList, yearlyFieldBonusList, yearlyFieldOpertCostList, yearlyFieldAbandonCostList, yearlyTaxList,\
+            monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
+            monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPVList[i], breakevenYear, maxExposure\
+            = self.calculateResultCurrentPrice(currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus, yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI,
+                                                fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
+                                                abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
+        return NPVList
 
     def calculateResultCurrentPrice(self, **kwargs):
         # unpack parameters from **kwargs
@@ -752,7 +758,7 @@ class FModel(QMainWindow):
         return monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflowList, yearlyFieldRevenueList, yearlyFieldCapitalCostList,\
                yearlyFieldRoyaltyList, yearlyFieldBonusList, yearlyFieldOpertCostList, yearlyFieldAbandonCostList, yearlyTaxList,\
                monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
-               monthlyFieldOpertCostList, monthlyFieldAbandonCostList
+               monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPV, breakevenYear, maxExposure
 
 
     def calculateResultSensitivity(self):
@@ -980,8 +986,6 @@ class FModel(QMainWindow):
         else:
             irr = np.irr(yearlyNetCashflow)
 
-        # print(loopPrice, irr)
-
         if loopPrice == currentPrice:
             result = (NPV, irr, yearlyNetCashflow, yearlyBreakevenPrice, breakevenYear, yearlyRoyalty,
                       yearlyCapital, yearlyOpertExpense, yearlyBonus, yearlyRental, yearlyIncomeTax)
@@ -995,31 +999,41 @@ class ParameterBox(QFrame):
     def __init__(self, parent=None):
         super(ParameterBox, self).__init__(parent)
         self.initParameterBox()
+        self.setStyleSheet('''
+            QFrame{
+                background: #d5dbe3;
+                border: None
+            }
 
+            QGroupBox{
+                background:transparent;
+                border: 2px solid gray;
+                border-radius: 5px;
+                margin-top: 23px;
+            }
+
+            QGroupBox::title{
+                color: #4a4a4a;
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 17px 0px 0px 0px;
+            }
+        ''')
 
     def initParameterBox(self):
-        self.setStyleSheet(
-            '''
-                QFrame{
-                    background-color: #d8dde3;
-                }
+        self.scrollArea = QScrollArea(self)
+        # self.scrollArea.setStyleSheet('''background: transparent''')
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollAreaWidgetContents = QFrame(self.scrollArea)
+        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+        subLayout = QVBoxLayout(self.scrollAreaWidgetContents)
 
-                QGroupBox {
-                    background-color: #d8dde3;
-                    border: 2px solid gray;
-                    border-radius: 5px;
-                    margin-top: 30px;
-                }
-
-                QGroupBox::title {
-                    font: bold 50px;
-                    subcontrol-origin: margin;
-                    left: 15px;
-                    padding: 21px 3px 0 3px;
-                }
-            ''')
-        layout = QGridLayout()
+        layout = QGridLayout(self)
         self.setLayout(layout)
+
+        layout.addWidget(self.scrollArea)
+        self.setLayout(layout)
+
         nc = 4  # column number
         # set default values
         currentPrice = 50
@@ -1052,7 +1066,7 @@ class ParameterBox(QFrame):
         groupBox_Eco = QGroupBox('Eonomic Parameters')
         box = QGridLayout()
         groupBox_Eco.setLayout(box)
-        layout.addWidget(groupBox_Eco)
+        subLayout.addWidget(groupBox_Eco)
 
         # Oil Price
         self.OilPriceSpinbox = QDoubleSpinBox()
@@ -1078,17 +1092,15 @@ class ParameterBox(QFrame):
 
 
 
-
-
-
         #####     Contract Info     #####
         groupBox_Contract = QGroupBox('Contract Information')
         box = QGridLayout()
         groupBox_Contract.setLayout(box)
-        layout.addWidget(groupBox_Contract)
+        subLayout.addWidget(groupBox_Contract)
 
         # Royalty Rate
         self.royaltyRateSpinbox = QDoubleSpinBox()
+        self.royaltyRateSpinbox.setSingleStep(0.1)
         self.royaltyRateSpinbox.setSuffix(" %")
         self.royaltyRateSpinbox.setValue(royaltyRate)
         self.royaltyRateSpinbox.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
@@ -1096,6 +1108,7 @@ class ParameterBox(QFrame):
 
         # rental
         self.rentalSpinbox = QDoubleSpinBox()
+        self.rentalSpinbox.setSingleStep(0.1)
         self.rentalSpinbox.setPrefix("$mm ")
         self.rentalSpinbox.setValue(rental)
         self.rentalSpinbox.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
@@ -1103,20 +1116,19 @@ class ParameterBox(QFrame):
 
         # bonus of first production
         self.bonusSpinbox = QDoubleSpinBox()
+        self.bonusSpinbox.setSingleStep(0.02)
         self.bonusSpinbox.setPrefix("$mm ")
         self.bonusSpinbox.setValue(bonus)
         self.bonusSpinbox.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
         box.addLayout(HBox(QLabel("Bonus of 1st oil:"), self.bonusSpinbox),1,0)
 
-        
 
 
-        
         #####     Expense Parameters     #####
         groupBox_Expense = QGroupBox('Expense Parameters of Each Well')
         box = QGridLayout()
         groupBox_Expense.setLayout(box)
-        layout.addWidget(groupBox_Expense)
+        subLayout.addWidget(groupBox_Expense)
 
         # Capital Expense
         box.addWidget(QLabel('Year 1'),0,1)
@@ -1126,16 +1138,19 @@ class ParameterBox(QFrame):
         box.addWidget(QLabel("Capital Expense:"),1,0)
         # 1
         self.capitalCostSpinbox1 = QDoubleSpinBox()
+        self.capitalCostSpinbox1.setSingleStep(0.1)
         self.capitalCostSpinbox1.setPrefix("$mm ")
         self.capitalCostSpinbox1.setValue(capitalYear1)
         self.capitalCostSpinbox1.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
         # 2
         self.capitalCostSpinbox2 = QDoubleSpinBox()
+        self.capitalCostSpinbox2.setSingleStep(0.1)
         self.capitalCostSpinbox2.setPrefix("$mm ")
         self.capitalCostSpinbox2.setValue(capitalYear2)
         self.capitalCostSpinbox2.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
         # 3
         self.capitalCostSpinbox3 = QDoubleSpinBox()
+        self.capitalCostSpinbox3.setSingleStep(0.1)
         self.capitalCostSpinbox3.setPrefix("$mm ")
         self.capitalCostSpinbox3.setValue(capitalYear3)
         self.capitalCostSpinbox3.setAlignment(Qt.AlignRight|Qt.AlignVCenter)
@@ -1197,15 +1212,11 @@ class ParameterBox(QFrame):
 
 
 
-
-
-
-
         #####     Field Parameters     #####
         groupBox_Field = QGroupBox('Field Parameters')
         box = QGridLayout()
         groupBox_Field.setLayout(box)
-        layout.addWidget(groupBox_Field)
+        subLayout.addWidget(groupBox_Field)
 
         # Recovery Rate
         self.recoveryRateSpinbox = QDoubleSpinBox()
@@ -1243,12 +1254,11 @@ class ParameterBox(QFrame):
 
 
 
-
         #####     Exploring Plan     #####
         groupBox_Plan = QGroupBox('Exploring Plan')
         box = QGridLayout()
         groupBox_Plan.setLayout(box)
-        layout.addWidget(groupBox_Plan)
+        subLayout.addWidget(groupBox_Plan)
 
         # ButtonBox
         addwellButton = QPushButton("Add Wells...")
@@ -1290,8 +1300,9 @@ class ParameterBox(QFrame):
     def deleteWell(self):
         if not self.tableWidget.rowCount()<=1:
             irow = self.tableWidget.currentRow()
-            self.tableWidget.removeRow(irow)
-            self.wellData.pop(irow)
+            if not irow < 0:
+                self.tableWidget.removeRow(irow)
+                self.wellData.pop(irow)
 
     def tableItemChanged(self, item):
         irow = self.tableWidget.currentRow()
@@ -1330,7 +1341,8 @@ class ParameterBox(QFrame):
 class ResultTab(QFrame):
     def __init__(self, parent=None):
         super(ResultTab, self).__init__(parent)
-        self.setMinimumWidth(700)
+        # self.setMinimumWidth(700)
+        # self.setMinimumHeight(700)
         self.initResultTab()
 
     def initResultTab(self):
@@ -1418,16 +1430,23 @@ class HBox(QHBoxLayout):
 
 if __name__ == "__main__":
     app = QApplication([])
-    # Create and display the splash screen
-    splash_pix = QPixmap('/Users/yunyunzhang/Desktop/PythonTest/quokka.jpg')
-    splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
-    splash.setMask(splash_pix.mask())
-    splash.show()
-    # Simulate something that takes time
-    time.sleep(1)
+
+
+    # # Create and display the splash screen
+    # splash_pix = QPixmap('/Users/yunyunzhang/Desktop/PythonTest/quokka.jpg')
+    # splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+    # splash.setMask(splash_pix.mask())
+    # splash.show()
+    # # Simulate something that takes time
+    # time.sleep(1)
+    # win = FModel()
+    # win.show()
+    # splash.finish(win)
+
+
     win = FModel()
     win.show()
-    splash.finish(win)
+
 
     sys.exit(app.exec_())
 
