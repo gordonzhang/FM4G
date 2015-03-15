@@ -6,7 +6,7 @@ import os
 import random
 import copy
 import time
-from itertools import izip_longest
+from itertools import izip_longest, cycle
 
 import numpy as np
 import scipy.ndimage as ndimage
@@ -15,14 +15,11 @@ from matplotlib import mlab as ml
 import matplotlib.cm as cm
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib as mpl
-
 import seaborn as sns
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-
 mpl.rc("figure", facecolor="white")
-
 DPI_default = 93
 
 class boxResult(QFrame):
@@ -45,6 +42,7 @@ class boxResult(QFrame):
     def updatePlot(self, result):
         self.resultLabel.setText(result)
 
+
 class NPVHist(FigureCanvas):
     def __init__(self, priceList=None, parent=None):
         self.fig = plt.figure(figsize=(8,5), dpi=DPI_default)
@@ -62,6 +60,8 @@ class NPVHist(FigureCanvas):
         self.ax = self.fig.add_subplot(111)
         self.ax.spines['right'].set_visible(False)
         self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+
         # self.ax.get_xaxis().tick_bottom()
 
         self.ax.hold(True)
@@ -72,7 +72,7 @@ class NPVHist(FigureCanvas):
 
         self.draw()
 
-    def updatePlot(self, NPVdata):
+    def updatePlot(self, NPVdata, lowerLimit, upperLimit):
         self.data = [x/1000000 for x in NPVdata]
         positiveNPVratio = sum([x>0 for x in NPVdata])/len(NPVdata)*100
         sns.set_style('white')
@@ -80,14 +80,117 @@ class NPVHist(FigureCanvas):
 
         self.ax.spines['right'].set_visible(False)
         self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+
         self.ax.hold(True)
         self.ax.set_xlabel('Net Present Value ($mm.)', fontsize=12)
         self.ax.set_ylabel('Frequency', fontsize=12)
         self.ax.set_title('Net Present Value Distribution of Simulated Results', fontsize=14, fontweight='bold')
 
         self.ax.hist(self.data, bins=40, normed=1, facecolor='#3F5D7D', alpha=0.9)
-        self.ax.text(0.7, 0.85, 'Ratio of Positive NPV: %0.1f' %positiveNPVratio +'%', fontweight='bold', transform=self.ax.transAxes)
+        self.ax.text(0.65, 0.85, 'Ratio of Positive NPV: %0.1f' %positiveNPVratio +'%', fontweight='bold', transform=self.ax.transAxes)
+        self.ax.text(0.65, 0.80, '95%% Conf. Interval: [%0.1f, %0.1f] $mm.' % (lowerLimit, upperLimit), fontweight='bold', transform=self.ax.transAxes)
         # draw new figure
+        self.draw()
+
+
+class AllNetCashflowChart(FigureCanvas):
+    def __init__(self, parent=None):
+        self.fig = plt.figure(figsize=(8,5), dpi=DPI_default)
+        FigureCanvas.__init__(self, self.fig)
+        self.setParent(parent)
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Fixed,
+                                   QSizePolicy.Fixed)
+        FigureCanvas.updateGeometry(self)
+        sns.set_style('white')
+
+        self.ax = self.fig.add_subplot(111)
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+        self.ax.spines['bottom'].set_visible(False)
+        self.ax.hold(True)
+
+        self.ax.set_xlabel('Year', fontsize=12)
+        self.ax.set_ylabel('Cash Flow', fontsize=12)
+        self.ax.set_title('All Simulated Yearly Net Cash Flows', fontsize=14, fontweight='bold')
+
+        self.draw()
+
+    def updatePlot(self, yearlyAverageNetCashflow, yearlyNetCashflowTableAllSamplesCurrentPrice):
+        sns.set_style('white')
+        self.ax.cla()
+
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+        self.ax.spines['bottom'].set_visible(False)
+
+        self.ax.hold(True)
+        self.ax.set_xlabel('Year', fontsize=12)
+        self.ax.set_ylabel('Cash Flow', fontsize=12)
+        self.ax.set_title('All Simulated Yearly Net Cash Flows', fontsize=14, fontweight='bold')
+
+        self.ax.plot([0 for _ in xrange(len(yearlyAverageNetCashflow))], "--", lw=1.5, color="black", alpha=0.3)
+        self.ax.plot(yearlyAverageNetCashflow, lw=2.5, alpha=0.9, color='#253649')
+        for cashflow in yearlyNetCashflowTableAllSamplesCurrentPrice:
+            self.ax.plot(cashflow, lw=.4, alpha=0.2, color='#3F5D7D')
+        self.draw()
+
+
+class oilProdChart(FigureCanvas):
+    def __init__(self, parent=None):
+        self.fig = plt.figure(figsize=(8,5), dpi=DPI_default)
+        FigureCanvas.__init__(self, self.fig)
+        self.setParent(parent)
+        FigureCanvas.setSizePolicy(self,
+                                   QSizePolicy.Fixed,
+                                   QSizePolicy.Fixed)
+        FigureCanvas.updateGeometry(self)
+        sns.set_style('whitegrid')
+        self.ax = self.fig.add_subplot(111)
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+        # self.ax.spines['bottom'].set_visible(False)
+        self.ax.hold(True)
+
+        self.ax.set_xlabel('Month', fontsize=12)
+        self.ax.set_ylabel('Production Volume', fontsize=12)
+        self.ax.set_title('Averaged Porducing Volume of Each Well', fontsize=14, fontweight='bold')
+
+        self.draw()
+
+    def updatePlot(self, monthlyEachWellProdVolTable):
+        monthlyEachWellProdVolTable_stack = np.asarray(np.cumsum(monthlyEachWellProdVolTable, axis=0))
+        while monthlyEachWellProdVolTable_stack[-1,-1] == 0:
+            monthlyEachWellProdVolTable_stack = monthlyEachWellProdVolTable_stack[:,:-1]
+
+        sns.set_style('whitegrid')
+        self.ax.cla()
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+        # self.ax.spines['bottom'].set_visible(False)
+
+        self.colorList = sns.color_palette(["#9b59b6", "#3498db", "#95a5a6", "#e74c3c", "#34495e", "#2ecc71"])
+        colorIter = cycle(self.colorList)
+
+        self.ax.hold(True)
+        self.ax.set_ylim(0,max(monthlyEachWellProdVolTable_stack[-1]))
+        self.ax.set_xlabel('Month', fontsize=12)
+        self.ax.set_ylabel('Production Volume', fontsize=12)
+        self.ax.set_title('Averaged Porducing Volume of Each Well', fontsize=14, fontweight='bold')
+
+        c = colorIter.next()
+        self.ax.plot(monthlyEachWellProdVolTable_stack[0], color=c, lw=1)
+        self.ax.fill_between(np.arange(len(monthlyEachWellProdVolTable_stack[0])), 0, monthlyEachWellProdVolTable_stack[0,:], facecolor=c, alpha=.3)
+        for i in xrange(1, len(monthlyEachWellProdVolTable_stack)):
+            c = colorIter.next()
+            self.ax.plot(monthlyEachWellProdVolTable_stack[i], color=c, lw=1)
+            self.ax.fill_between(np.arange(len(monthlyEachWellProdVolTable_stack[0])), monthlyEachWellProdVolTable_stack[i-1,:], monthlyEachWellProdVolTable_stack[i,:], facecolor=c, alpha=.3)
+        
         self.draw()
 
 
@@ -141,16 +244,7 @@ class IntervalChart(FigureCanvas):
         self.ax.set_title(self.title, fontsize=16, fontweight='bold')
         self.ax.set_xticks(ind)
 
-        # # extend shorter data list to the longest length with 0's
-        # maxLen = max([len(x) for x in self.data])
-        # for i,x in enumerate(self.data):
-        #     self.data[i] = x + [0]*(maxLen-len(x))
-
         self.ax.plot([0 for _ in xrange(len(self.data[-1]))], "--", lw=1.5, color="black", alpha=0.3)
-        # self.ax.plot(self.data[2], color='#3F5D7D', linewidth=2)
-        # self.ax.fill_between(range(maxLen), self.data[0], self.data[4], facecolor='#3F5D7D', alpha = self.alp)
-        # self.ax.fill_between(range(maxLen), self.data[1], self.data[3], facecolor='#3F5D7D', alpha = self.alp)
-        
         for i in xrange(5):
             self.ax.plot(self.data[i], color=self.colorList[i], linewidth=2.5)
             j = int(len(self.data[i])*3/4)
@@ -182,6 +276,8 @@ class stackedBarchart(FigureCanvas):
         self.ax = self.fig.add_subplot(111)
         self.ax.spines['right'].set_visible(False)
         self.ax.spines['top'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+
         self.ax.set_xlabel('Year', fontsize=12)
         self.ax.set_ylabel('Outflow ($mm.)', fontsize=12)
         self.ax.set_title('Outflow Breakdown', fontsize=16, fontweight='bold')
@@ -226,47 +322,6 @@ class stackedBarchart(FigureCanvas):
         self.draw()
 
 
-class irrChart(FigureCanvas):
-    def __init__(self, parent=None):
-        self.fig = plt.figure(figsize=(8,6), dpi=DPI_default)
-        FigureCanvas.__init__(self, self.fig)
-        self.setParent(parent)
-        FigureCanvas.setSizePolicy(self,
-                                   QSizePolicy.Fixed,
-                                   QSizePolicy.Fixed)
-        FigureCanvas.updateGeometry(self)
-        sns.set_style("whitegrid")
-        self.colorList = sns.cubehelix_palette(6, start=.5, rot=-.65, light=0.95)
-
-        self.ax1 = self.fig.add_subplot(211)
-        self.ax1.hold(True)
-        plt.subplots_adjust(hspace = 0.5)
-        self.ax2 = self.fig.add_subplot(212)
-        self.ax2.hold(True)
-
-        self.draw()
-
-    def updatePlot(self, irrList, priceList):
-        self.ax1.cla()
-        self.ax2.cla()
-
-        self.irrList = [a*100 for a in irrList]
-        self.ax1.plot(priceList, self.irrList, linewidth=2)
-        self.ax2.plot(priceList[:len(priceList)//2], self.irrList[:len(priceList)//2], linewidth=2)
-
-        self.ax1.set_xlabel('Oil Price $', fontsize=12)
-        self.ax1.set_ylabel('Internal Rate of Return %', fontsize=12)
-        self.ax1.set_title('IRR for different Oil Prices', fontsize=16, fontweight='bold')
-        # self.ax1.set_xticks(priceList)
-
-        self.ax2.set_xlabel('Oil Price $', fontsize=12)
-        self.ax2.set_ylabel('Internal Rate of Return %', fontsize=12)
-        self.ax2.set_title('IRR for different Oil Prices', fontsize=16, fontweight='bold')
-        # self.ax2.set_xticks(priceList[:len(priceList)//2])
-
-        self.draw()
-
-
 class breakevenPriceChart(FigureCanvas):
     def __init__(self, parent=None):
         self.fig = plt.figure()
@@ -287,51 +342,6 @@ class breakevenPriceChart(FigureCanvas):
         self.ax.cla()
         self.data = data
         self.ax.plot(range(len(self.data)), self.data, linewidth=2.5)
-        self.draw()
-
-
-class Old_Heatmap(FigureCanvas):
-    def __init__(self, parent=None):
-        self.fig = plt.figure(figsize=(8, 6), dpi=DPI_default)
-        FigureCanvas.__init__(self, self.fig)
-        self.setParent(parent)
-        FigureCanvas.setSizePolicy(self,
-                                   QSizePolicy.Fixed,
-                                   QSizePolicy.Fixed)
-        FigureCanvas.updateGeometry(self)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.hold(True)
-        self.ax.set_xlabel('Oil Price', fontsize=12)
-        self.ax.set_ylabel('Success Rate %', fontsize=12)
-        self.ax.set_title('Cross Analysis of Oil Price and Drilling Success Rate', fontsize=16, fontweight='bold')
-        self.draw()
-
-    def updatePlot(self, x, y, z):
-        self.x = x
-        self.y = [(a*100) for a in y]
-        self.z = [[a/1000000 for a in b] for b in z]
-        self.gridsize = 25
-        # clear current figure
-        self.ax.cla()
-        # self.fig.clf()
-        indx = [int(np.floor(a)) for a in x]
-        indy = [int(np.floor(a*100)) for a in y]
-        self.ax.set_xlabel('Oil Price', fontsize=12)
-        self.ax.set_ylabel('Success Rate %', fontsize=12)
-        self.ax.set_title('Cross Analysis of Oil Price and Drilling Success Rate', fontsize=16, fontweight='bold')
-
-        self.x, self.y = np.meshgrid(self.x, self.y)
-        self.x = self.x.ravel()
-        self.y = self.y.ravel()
-        self.z = np.asarray(self.z).ravel()
-        im = self.ax.hexbin(self.x, self.y, C=self.z, gridsize=self.gridsize, cmap = sns.cubehelix_palette(light=1,start=.5, rot=-.65, as_cmap=True), bins=None)
-        self.ax.axis([self.x.min(), self.x.max(), self.y.min(), self.y.max()])
-
-        if not hasattr(self, 'cb'):
-            self.cb = self.fig.colorbar(im)
-            self.cb.set_label('Net Present Value ($mm.)')
-
-        # draw new figure
         self.draw()
 
 
@@ -359,9 +369,9 @@ class Heatmap(FigureCanvas):
     def updatePlot(self, x, y, z):
         y = [(a*100) for a in y]
         z = [[a/1000000 for a in b] for b in z]
-        xx = ndimage.zoom(x, 5, order=1)
-        yy = ndimage.zoom(y, 5, order=1)
-        zz = ndimage.zoom(z, 5, order=1)
+        xx = ndimage.zoom(x, 6, order=1)
+        yy = ndimage.zoom(y, 6, order=1)
+        zz = ndimage.zoom(z, 6, order=1)
 
         self.ax.cla()
         self.ax.set_xlabel('Oil Price $', fontsize=12)
@@ -369,7 +379,7 @@ class Heatmap(FigureCanvas):
         self.ax.set_title('Cross Analysis: Oil Price vs Drilling Succ. Rate', fontsize=16, fontweight='bold')
 
         im = self.ax.imshow(z, extent=[x[0],x[-1],y[0],y[-1]], interpolation='bilinear', cmap=cm.RdBu, origin='lower')
-        self.ax.contour(xx, yy, zz, [0], colors='black', linewidth=.5)
+        self.ax.contour(xx, yy, zz, [0], colors='#3F5D7D', alpha=.9, linewidths=1.5)
 
         if not hasattr(self, 'cb'):
             self.cb = self.fig.colorbar(im)
@@ -379,12 +389,10 @@ class Heatmap(FigureCanvas):
         self.draw()
 
 
-
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
-
 
 __version__ = "1.0.0"
 
@@ -518,11 +526,12 @@ class FModel(QMainWindow):
         currentPrice, priceList, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense, varOpertExpense,\
             capitalCost, tangibleCapitalPerc, abandonCost, wellData, lowestPrice, highestPrice, recoverableVol, maxNumOfProducingWells = self.parameterBox.getParameters()
 
-        priceListCross = [30., 40., 50., 60., 70., 80., 90., 100.]
-        succRateList = [.3, .4, .5, .6, .7, .8, .9, 1.]
+        priceListCross = [30., 45., 60., 75., 90., 105.]
+        succRateList = [.15, .30, .45, .60, .75, .90]
 
-        NPVTableResult_diffPrices, yearlyNetCashflowTableResult, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,\
-            yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, NPVTableCross\
+        NPVTableResult_diffPrices, yearlyNetCashflowTableResult, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, \
+        yearlyOpertExpenseCurrentPrice, yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, NPVTableCross, \
+        yearlyNetCashflowTableAllSamplesCurrentPrice, monthlyEachWellProdVolTable, maxExposureList \
         = self.calculateAllResults(currentPrice, priceList, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense, varOpertExpense,
         capitalCost, tangibleCapitalPerc, abandonCost, wellData, lowestPrice, highestPrice, recoverableVol, maxNumOfProducingWells, priceListCross, succRateList)
 
@@ -530,24 +539,9 @@ class FModel(QMainWindow):
                                yearlyRoyaltyCurrentPrice=yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice=yearlyCapitalCurrentPrice,
                                yearlyOpertExpenseCurrentPrice=yearlyOpertExpenseCurrentPrice, yearlyBonusCurrentPrice=yearlyOpertExpenseCurrentPrice,
                                yearlyRentalCurrentPrice=yearlyOpertExpenseCurrentPrice, yearlyIncomeTaxCurrentPrice=yearlyOpertExpenseCurrentPrice,
-                               priceListCross=priceListCross, succRateList=succRateList, NPVTableCross=NPVTableCross)
-        # (NPVList, irrList, netCashflowTable, breakevenPriceList, NPVTable, breakevenYearList, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-        # yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, succRateList) = \
-        #     self.calculateAllResults(currentPrice, priceList, taxRate, royaltyRate, rental, bonus, CPI, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, self.wellData)
-        # indexCurrentPrice = priceList.index(currentPrice)
-        # irrCurrentPrice = irrList[indexCurrentPrice]
-        # NPVCurrentPrice = NPVList[indexCurrentPrice]
-        # breakevenYearCurrentPrice = breakevenYearList[indexCurrentPrice]
-
-        # self.tab1.updateGraphs(netCashflowTable, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-        #                        yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, priceList, succRateList, NPVTable,
-        #                        irrCurrentPrice, NPVCurrentPrice, breakevenYearCurrentPrice,
-        #                        irrList, NPVList)
-        # self.tab2.updateGraphs(netCashflowTable, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-        #                        yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, priceList, succRateList, NPVTable,
-        #                        irrCurrentPrice, NPVCurrentPrice, breakevenYearCurrentPrice,
-        #                        irrList, NPVList)
-
+                               priceListCross=priceListCross, succRateList=succRateList, NPVTableCross=NPVTableCross,
+                               yearlyNetCashflowTableAllSamplesCurrentPrice=yearlyNetCashflowTableAllSamplesCurrentPrice, monthlyEachWellProdVolTable=monthlyEachWellProdVolTable,
+                               maxExposureList = maxExposureList)
 
 
     def calculateAllResults(self, currentPrice, priceList, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense, varOpertExpense, capitalCost,
@@ -556,16 +550,16 @@ class FModel(QMainWindow):
         NPVTableResult_diffPrices = [0 for _ in xrange(5)]
         NPVTableCross = [[0 for i in xrange(len(priceListCross))] for j in xrange(len(succRateList))]
         # Result of current Price
-        NPVTableResult_diffPrices[2], yearlyNetCashflowTableResult[2], averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,\
-            yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice\
-        = self.simulateResultCurrentPrice(nSimulation=1000, currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus,
+        NPVTableResult_diffPrices[2], yearlyNetCashflowTableResult[2], averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice, \
+            yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, yearlyNetCashflowTableAllSamplesCurrentPrice, monthlyEachWellProdVolTable, maxExposureList \
+        = self.simulateResultCurrentPrice(nSimulation=300, currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus,
                                           yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI, fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense,
                                           capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc, abandonCost=abandonCost, wellData=wellData,
                                           recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
         # loop the priceList
         for i in [0,1,3,4]:
             price = priceList[i]
-            NPVTableResult_diffPrices[i], yearlyNetCashflowTableResult[i] ,_,_,_,_,_,_,_\
+            NPVTableResult_diffPrices[i], yearlyNetCashflowTableResult[i] ,_,_,_,_,_,_,_,_,_,_\
             = self.simulateResultCurrentPrice(nSimulation=100, currentPrice=price, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus,
                                               yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI, fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense,
                                               capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc, abandonCost=abandonCost, wellData=wellData,
@@ -574,8 +568,8 @@ class FModel(QMainWindow):
         # loop the succRateList and priceListCross
         for i, succRate in enumerate(succRateList):
             for j, price in enumerate(priceListCross):
-                NPVTemp,_,_,_,_,_,_,_,_\
-                = self.simulateResultCurrentPrice(nSimulation=100, currentPrice=price, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus,
+                NPVTemp,_,_,_,_,_,_,_,_,_,_,_\
+                = self.simulateResultCurrentPrice(nSimulation=50, currentPrice=price, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus,
                                                   yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI, fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense,
                                                   capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc, abandonCost=abandonCost, wellData=wellData,
                                                   recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells, succRate=succRate)
@@ -583,12 +577,17 @@ class FModel(QMainWindow):
 
 
         return NPVTableResult_diffPrices, yearlyNetCashflowTableResult, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,\
-               yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, NPVTableCross
+               yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, NPVTableCross, yearlyNetCashflowTableAllSamplesCurrentPrice, \
+               monthlyEachWellProdVolTable, maxExposureList
 
     def simulateResultCurrentPrice(self, nSimulation, currentPrice, taxRate, royaltyRate, rental, bonus, yearlyCPI, monthlyCPI, fixedOpertExpense,
                                    varOpertExpense, capitalCost, tangibleCapitalPerc, abandonCost, wellData, recoverableVol, maxNumOfProducingWells, succRate=None):
+        nWells = sum(np.asarray(wellData)[:,2])
+        monthlyEachWellProdVolTable = [[] for _ in range(nWells)]
         NPVList = [0 for _ in xrange(nSimulation)]
-        yearlyNetCashflow = []
+        maxExposureList = [0 for _ in xrange(nSimulation)]
+        yearlyAverageNetCashflow = []
+        yearlyNetCashflowTableAllSamplesCurrentPrice = []
         yearlyRoyaltyCurrentPrice = []
         yearlyCapitalCurrentPrice = []
         yearlyOpertExpenseCurrentPrice = []
@@ -597,23 +596,24 @@ class FModel(QMainWindow):
         breakevenYearList = [0 for _ in xrange(nSimulation)]
         for i in xrange(nSimulation):
             if not succRate:
-                monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflowTemp, yearlyFieldRevenueList, yearlyFieldCapitalCostListTemp,\
+                monthlyEachWellProdVolTableTemp, monthlyFieldVolList, yearlyNetCashflowTemp, yearlyFieldRevenueList, yearlyFieldCapitalCostListTemp,\
                 yearlyFieldRoyaltyListTemp, yearlyFieldBonusListTemp, yearlyFieldOpertCostListTemp, yearlyFieldAbandonCostList, yearlyTaxListTemp,\
                 monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
-                monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPVList[i], breakevenYearList[i], maxExposure\
+                monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPVList[i], breakevenYearList[i], maxExposureList[i] \
                 = self.calculateOneResultCurrentPrice(currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus, yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI,
-                                                    fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
-                                                    abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
+                                                      fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
+                                                      abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells)
             else:
-                monthlyEachWellProdVolTable, monthlyFieldVolList, yearlyNetCashflowTemp, yearlyFieldRevenueList, yearlyFieldCapitalCostListTemp,\
+                monthlyEachWellProdVolTableTemp, monthlyFieldVolList, yearlyNetCashflowTemp, yearlyFieldRevenueList, yearlyFieldCapitalCostListTemp,\
                 yearlyFieldRoyaltyListTemp, yearlyFieldBonusListTemp, yearlyFieldOpertCostListTemp, yearlyFieldAbandonCostList, yearlyTaxListTemp,\
                 monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
-                monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPVList[i], breakevenYearList[i], maxExposure\
+                monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPVList[i], breakevenYearList[i], maxExposureList[i] \
                 = self.calculateOneResultCurrentPrice(currentPrice=currentPrice, taxRate=taxRate, royaltyRate=royaltyRate, rental=rental, bonus=bonus, yearlyCPI=yearlyCPI, monthlyCPI=monthlyCPI,
-                                                    fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
-                                                    abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells, succRate=succRate)
+                                                      fixedOpertExpense=fixedOpertExpense, varOpertExpense=varOpertExpense, capitalCost=capitalCost, tangibleCapitalPerc=tangibleCapitalPerc,
+                                                      abandonCost=abandonCost, wellData=wellData, recoverableVol=recoverableVol, maxNumOfProducingWells=maxNumOfProducingWells, succRate=succRate)
+            yearlyNetCashflowTableAllSamplesCurrentPrice.append(yearlyNetCashflowTemp)
             yearlyNetCashflowTemp = [x/nSimulation for x in yearlyNetCashflowTemp]
-            yearlyNetCashflow = [x+y for x,y in izip_longest(yearlyNetCashflow, yearlyNetCashflowTemp, fillvalue=0)]
+            yearlyAverageNetCashflow = [x+y for x,y in izip_longest(yearlyAverageNetCashflow, yearlyNetCashflowTemp, fillvalue=0)]
             yearlyFieldRoyaltyListTemp = [x/nSimulation for x in yearlyFieldRoyaltyListTemp]
             yearlyRoyaltyCurrentPrice = [x+y for x,y in izip_longest(yearlyRoyaltyCurrentPrice, yearlyFieldRoyaltyListTemp, fillvalue=0)]
             yearlyFieldCapitalCostListTemp = [x/nSimulation for x in yearlyFieldCapitalCostListTemp]
@@ -624,13 +624,18 @@ class FModel(QMainWindow):
             yearlyBonusCurrentPrice = [x+y for x,y in izip_longest(yearlyBonusCurrentPrice, yearlyFieldBonusListTemp, fillvalue=0)]
             yearlyTaxListTemp = [x/nSimulation for x in yearlyTaxListTemp]
             yearlyIncomeTaxCurrentPrice = [x+y for x,y in izip_longest(yearlyIncomeTaxCurrentPrice, yearlyTaxListTemp, fillvalue=0)]
-            yearlyRentalCurrentPrice = [rental for _ in xrange(len(yearlyNetCashflow))]
+            yearlyRentalCurrentPrice = [rental for _ in xrange(len(yearlyAverageNetCashflow))]
+
+            for i, prodList in enumerate(monthlyEachWellProdVolTableTemp):
+                prodList = [x/nSimulation for x in prodList]
+                monthlyEachWellProdVolTable[i] = [x+y for x,y in izip_longest(prodList, monthlyEachWellProdVolTable[i], fillvalue=0)]
 
         breakevenYearList = [x for x in breakevenYearList if x>0]
         averageBreakevenYear = np.mean(breakevenYearList)
 
-        return NPVList, yearlyNetCashflow, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,\
-               yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice
+        return NPVList, yearlyAverageNetCashflow, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice, \
+               yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, yearlyNetCashflowTableAllSamplesCurrentPrice, monthlyEachWellProdVolTable, \
+               maxExposureList
 
     def calculateOneResultCurrentPrice(self, **kwargs):
         # unpack parameters from **kwargs
@@ -726,9 +731,10 @@ class FModel(QMainWindow):
 
         ### convert ELT Flag from yearly to monthly
         monthlyELTFlagList = []
-        for flag in yearlyELTFlagList: monthlyELTFlagList += [flag]*12
+        for flag in yearlyELTFlagList:
+            monthlyELTFlagList += [flag]*12
 
-        # set monthly production volumn to 0 when oil field is OFF (ELT Flag = 0)
+        # set monthly production volume to 0 when oil field is OFF (ELT Flag = 0)
         for i in range(len(monthlyEachWellProdVolTable)):
             for j in range(len(monthlyEachWellProdVolTable[0])):
                 monthlyEachWellProdVolTable[i][j] *= monthlyELTFlagList[j]
@@ -889,233 +895,6 @@ class FModel(QMainWindow):
                yearlyFieldRoyaltyList, yearlyFieldBonusList, yearlyFieldOpertCostList, yearlyFieldAbandonCostList, yearlyTaxList,\
                monthlyFieldRevenueList, monthlyFieldCapitalCostList, monthlyFieldRoyaltyList, monthlyFieldBonusList,\
                monthlyFieldOpertCostList, monthlyFieldAbandonCostList, NPV, breakevenYear, maxExposure
-
-
-    def Original_calculateResult(self, currentPrice, priceList, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData):
-        depreciationPeriod = 25
-        NPVList = copy.deepcopy(priceList)
-        irrList = copy.deepcopy(priceList)
-        breakevenYearList = copy.deepcopy(priceList)
-        breakevenPriceList = []
-        netCashflowTable = [[] for _ in priceList]
-        for i, loopPrice in enumerate(priceList):
-            if loopPrice == currentPrice:
-                (NPVList[i], irrList[i], netCashflowTable[i], breakevenPriceList, breakevenYearList[i],
-                 yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-                 yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice)\
-                  = self.calculateSubResult(loopPrice, currentPrice, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData, depreciationPeriod)
-            else:
-                (NPVList[i], irrList[i], netCashflowTable[i], breakevenPriceList, breakevenYearList[i]) \
-                  = self.calculateSubResult(loopPrice, currentPrice, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData, depreciationPeriod)
-
-        succRateList = np.linspace(0.3, 0.8, 36)
-        NPVTable = [[0 for _ in priceList] for _ in succRateList]
-        for ii, succRate in enumerate(succRateList):
-            for jj, loopPrice in enumerate(priceList):
-                if loopPrice == currentPrice:
-                    NPVTable[ii][jj],_,_,_,_,_,_,_,_,_,_ = self.calculateSubResult(loopPrice, currentPrice, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData, depreciationPeriod, succRate)
-                else:
-                    NPVTable[ii][jj],_,_,_,_ = self.calculateSubResult(loopPrice, currentPrice, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData, depreciationPeriod, succRate)
-        return (NPVList, irrList, netCashflowTable, breakevenPriceList, NPVTable, breakevenYearList,
-                yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-                yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, succRateList)
-
-    def Original_calculateSubResult(self, loopPrice, currentPrice, taxRate, royaltyRate, rental, bonus, CPI, declineRate, fixedOpertExpense, varOpertExpense, capitalCost, tangibleCapitalPerc, wellData, depreciationPeriod, succRate=None):
-        # calculate oil production list (oilProdVolList)
-        Price = copy.copy(loopPrice)
-        oilProdVolList = [[0 for x in range(wellData[-1][0]+wellLifespan)] for x in range(len(wellData))]
-        for iWell, ProdList in enumerate(oilProdVolList):
-            initTime = wellData[iWell][0]
-            numWell = wellData[iWell][1]
-            initProd = wellData[iWell][2]
-            if succRate == None:
-                succRate = wellData[iWell][3]/100
-            
-            for year, prodVol in enumerate(ProdList):
-                if year >= initTime:
-                    p = succRate*365.25*numWell*initProd*(declineRate**(year-initTime))
-                    oilProdVolList[iWell][year] = p
-                    if year == initTime:
-                        oilProdVolList[iWell][year] = oilProdVolList[iWell][year]/2
-
-
-
-
-        oilProdVolList = []
-
-        lastWellYear = 12 * (max(x[0] for x in wellData) + wellLifespan)
-
-        for startYear, startMonth, nWells, succRate in iter(wellData):
-            for _ in xrange(nWells):
-                n = 12*startYear + startMonth
-                if random.uniform(0,1) < succRate:
-                    prodVol = [0 for _ in xrange(lastWellYear)]
-
-
-
-
-        # Econmic Limit Test
-        yearlyCPI = [CPI**i for i in range(len(oilProdVolList[0]))]
-        yearlyOilPrice = [cpi*Price for cpi in yearlyCPI]
-        grossRevenueListPreELT = [[Price*volumn for Price,volumn in zip(yearlyOilPrice, wellProdVol)] for wellProdVol in oilProdVolList]
-        royaltyListPreELT = [[e * royaltyRate for e in well] for well in grossRevenueListPreELT]
-        bonusList = [[0 for x in range(len(grossRevenueListPreELT[0]))] for x in range(len(grossRevenueListPreELT))]
-        capitalCostList = copy.deepcopy(bonusList)
-        tangibleCapitalCostList = copy.deepcopy(bonusList)
-        intangibleCapitalCostList = copy.deepcopy(bonusList)
-        tangibleCapitalDepreciationList = copy.deepcopy(bonusList)
-        cashflowListPreRental = copy.deepcopy(bonusList)
-        ELTFlagList = [[1 for x in range(len(grossRevenueListPreELT[0]))] for x in range(len(grossRevenueListPreELT))]
-        
-
-        for iWell, iWellRevenueList in enumerate(grossRevenueListPreELT):
-            if succRate == None:
-                succRate = wellData[iWell][3]/100
-            for year, revenue in enumerate(iWellRevenueList):
-                if revenue:
-                    bonusList[iWell][year] = succRate*bonus*wellData[iWell][1]
-                    c = [capital*(CPI**year)*wellData[iWell][1] for capital in capitalCost]
-                    capitalCostList[iWell][year:year+2] = c
-                    tangibleCapitalCostList[iWell][year:year+2] = [a*b for a,b in zip(c, tangibleCapitalPerc)]
-                    intangibleCapitalCostList[iWell][year:year+2] = [a*(1-b) for a,b in zip(c, tangibleCapitalPerc)]
-                    break
-
-        # Calculate every year depreciation of tangible capital cost
-        for year, data in enumerate(tangibleCapitalCostList):
-            s1 = [0 for x in data]
-            s2 = copy.deepcopy(s1)
-            s3 = copy.deepcopy(s1)
-            for i,d in enumerate(data):
-                depLength = min(len(data)-i, depreciationPeriod)
-                if d:
-                    s1[i:] = [d/depreciationPeriod for x in range(depLength)]
-                    s2[(i+1):] = [data[i+1]/depreciationPeriod for x in range(depLength-1)]
-                    s3[(i+2):] = [data[i+2]/depreciationPeriod for x in range(depLength-2)]
-                    l = [a+b+c for a,b,c in zip(s1,s2,s3)]
-                    tangibleCapitalDepreciationList[year][0:len(l)] = l
-                    break
-            
-
-        OpertExpenseListPreELT = [[fixedOpertExpense*wellData[iWell][1]*wellData[iWell][3]/100\
-                                + vol*varOpertExpense for vol in iWellProd] for iWell,iWellProd in enumerate(oilProdVolList)]
-        
-        # ELT Flag = 0 if cashflow is negative, 1 if positive.
-        for iWell in range(len(ELTFlagList)):
-            for year in range(len(ELTFlagList[0])):
-                cashflow = grossRevenueListPreELT[iWell][year] - royaltyListPreELT[iWell][year]\
-                           - capitalCostList[iWell][year] - OpertExpenseListPreELT[iWell][year]
-                if year > (wellData[iWell][0]+1) and cashflow <= 0:
-                    ELTFlagList[iWell][year] = 0
-                else:
-                    cashflowListPreRental[iWell][year] = cashflow
-
-
-        # consider Rental for all wells to determine field ELT:
-        yearlyCashflowPreRental = [0 for x in range(len(ELTFlagList[0]))]
-        for year in range(len(ELTFlagList[0])):
-            for iWell in range(len(ELTFlagList)):
-                yearlyCashflowPreRental[year] += cashflowListPreRental[iWell][year]
-
-        # find the last year that all wells in the field is generating positive cashflow
-        for year, data in enumerate(yearlyCashflowPreRental):
-            yearCashflow = data - rental
-            if yearCashflow < 0 and year > (wellData[-1][0]+1):
-                lastFieldYear = year-1
-                break
-        else:
-            lastFieldYear = len(yearlyCashflowPreRental)
-
-        # Delete columns of years after last field economic year
-        for iWell, ELTdata in enumerate(ELTFlagList):
-            ELTFlagList[iWell][lastFieldYear+1:] = []
-
-        # Calculate Post ELT lists
-        grossRevenueListPostELT = copy.deepcopy(grossRevenueListPreELT[:][:lastFieldYear])
-        royaltyListPostELT = copy.deepcopy(royaltyListPreELT[:][:lastFieldYear])
-        OpertExpenseListPostELT = copy.deepcopy(OpertExpenseListPreELT[:][:lastFieldYear])
-        oilProdVolListPostELT = copy.deepcopy(oilProdVolList[:][:lastFieldYear])
-        
-        for iWell, ELTList in enumerate(ELTFlagList):
-            for year, ELT in enumerate(ELTList):
-                grossRevenueListPostELT[iWell][year] = ELT*grossRevenueListPreELT[iWell][year]
-                royaltyListPostELT[iWell][year] = ELT*royaltyListPreELT[iWell][year]
-                OpertExpenseListPostELT[iWell][year] = ELT*OpertExpenseListPreELT[iWell][year]
-                tangibleCapitalDepreciationList[iWell][year] = ELT*tangibleCapitalDepreciationList[iWell][year]
-                oilProdVolListPostELT[iWell][year] = ELT*oilProdVolListPostELT[iWell][year]
-
-        # Post ELT: Tax Calculations:
-        yearlyRevenue = [0 for x in range(len(ELTFlagList[0]))]
-        yearlyOilProdVol = copy.deepcopy(yearlyRevenue)
-        yearlyRoyalty = copy.deepcopy(yearlyRevenue)
-        yearlyCapital = copy.deepcopy(yearlyRevenue)
-        yearlyTangibleCapitalDepreciation = copy.deepcopy(yearlyRevenue)
-        yearlyIntangibleCapital = copy.deepcopy(yearlyRevenue)
-        yearlyBonus = copy.deepcopy(yearlyRevenue)
-        yearlyOpertExpense = copy.deepcopy(yearlyRevenue)
-        yearlyRental = [rental for x in ELTFlagList[0]]
-
-        taxLoss = copy.deepcopy(yearlyRevenue)
-        taxAllowance = copy.deepcopy(yearlyRevenue)
-        yearlyIncomeTax = copy.deepcopy(yearlyRevenue)
-        yearlyCashOutflow = copy.deepcopy(yearlyRevenue)
-        yearlyNetCashflow = copy.deepcopy(yearlyRevenue)
-        yearlyCost = copy.deepcopy(yearlyRevenue)
-        yearlyCostPerBarrel = copy.deepcopy(yearlyRevenue)
-        yearlyBreakevenPrice = copy.deepcopy(yearlyRevenue)
-        
-        for year in range(len(ELTFlagList[0])):
-            for iWell in range(len(ELTFlagList)):
-                yearlyRevenue[year] += grossRevenueListPostELT[iWell][year]
-                yearlyOilProdVol[year] += oilProdVolListPostELT[iWell][year]
-                yearlyRoyalty[year] += royaltyListPostELT[iWell][year]
-                yearlyCapital[year] += capitalCostList[iWell][year]
-                yearlyTangibleCapitalDepreciation[year] += tangibleCapitalDepreciationList[iWell][year]
-                yearlyIntangibleCapital[year] += intangibleCapitalCostList[iWell][year]
-                yearlyBonus[year] += bonusList[iWell][year]
-                yearlyOpertExpense[year] += OpertExpenseListPostELT[iWell][year]
-
-        for year,item in enumerate(yearlyRevenue):
-            taxLossCarryforwardYears = 7
-            taxAllowance[year] = yearlyRoyalty[year] + yearlyTangibleCapitalDepreciation[year]\
-             + yearlyIntangibleCapital[year] + yearlyOpertExpense[year] + yearlyBonus[year] + yearlyRental[year]
-            taxLoss[year] = -(yearlyRevenue[year] - taxAllowance[year])
-            if year>0:
-                accumulatedTaxLoss = max(0, sum(taxLoss[max(0,(year-(taxLossCarryforwardYears-1))):year]))
-                taxAllowance[year] = taxAllowance[year] + accumulatedTaxLoss
-            taxableProfit = max(0, yearlyRevenue[year] - taxAllowance[year])
-            yearlyIncomeTax[year] = taxableProfit * taxRate
-
-        for year,item in enumerate(yearlyRevenue):
-            yearlyCashOutflow[year] = yearlyRoyalty[year] + yearlyCapital[year] + yearlyOpertExpense[year]\
-                                          + yearlyBonus[year] + yearlyRental[year] + yearlyIncomeTax[year]
-            yearlyCost[year] = yearlyOpertExpense[year] + yearlyRental[year]
-            yearlyBreakevenPrice[year] = yearlyCost[year]/yearlyOilProdVol[year]/(1-royaltyRate)
-            yearlyNetCashflow[year] = yearlyRevenue[year] - yearlyCashOutflow[year]
-
-        yearlyRealNetCashflow = [a/b for a,b in zip(yearlyNetCashflow, yearlyCPI)]
-        yearlyCostPerBarrel = [a/b/c for a,b,c in zip(yearlyCost, yearlyCPI, yearlyOilProdVol)]
-
-
-        NPV = (sum(yearlyRealNetCashflow))
-        for i in xrange(len(yearlyRealNetCashflow)):
-            if sum(yearlyRealNetCashflow[:i]) < 0 and sum(yearlyRealNetCashflow[:i+1]) >= 0:
-                breakevenYear = i
-                break
-        else:
-            breakevenYear = 0
-
-        if all(item >= 0 for item in yearlyNetCashflow) or all(item < 0 for item in yearlyNetCashflow):
-            irr = None
-        else:
-            irr = np.irr(yearlyNetCashflow)
-
-        if loopPrice == currentPrice:
-            result = (NPV, irr, yearlyNetCashflow, yearlyBreakevenPrice, breakevenYear, yearlyRoyalty,
-                      yearlyCapital, yearlyOpertExpense, yearlyBonus, yearlyRental, yearlyIncomeTax)
-        else:
-            result = (NPV, irr, yearlyNetCashflow, yearlyBreakevenPrice, breakevenYear)
-            
-        return result
 
 
 class ParameterBox(QFrame):
@@ -1497,16 +1276,18 @@ class ResultTab(QFrame):
         subLayout0.setAlignment(Qt.AlignHCenter)
 
         self.NPVBox = boxResult('Net Present Value')
-        self.NPVciBox = boxResult('95% NPV Conf. Interval')
+        self.MaxExpoBox = boxResult('Max. Capital Exposure')
         self.BreakevenBox = boxResult('Average Breakeven Year')
         topResultBox = QHBoxLayout()
         topResultBox.addWidget(self.NPVBox)
         topResultBox.addSpacing(20)
-        topResultBox.addWidget(self.NPVciBox)
+        topResultBox.addWidget(self.MaxExpoBox)
         topResultBox.addSpacing(20)
         topResultBox.addWidget(self.BreakevenBox)
 
+        self.oilProdChart = oilProdChart()
         self.NPVHist = NPVHist()
+        self.AllNetCashflowChart = AllNetCashflowChart()
         self.IntervalChart = IntervalChart([0,0,0,0,0])
         self.outflowBarchart = stackedBarchart()
         self.heatmap = Heatmap()
@@ -1516,7 +1297,9 @@ class ResultTab(QFrame):
         subLayout0.addSpacing(10)
         subLayout0.addLayout(topResultBox)
         subLayout0.addSpacing(30)
+        subLayout0.addWidget(self.oilProdChart)
         subLayout0.addWidget(self.NPVHist)
+        subLayout0.addWidget(self.AllNetCashflowChart)
         subLayout0.addWidget(self.outflowBarchart)
 
 
@@ -1527,37 +1310,25 @@ class ResultTab(QFrame):
         layout.addWidget(self.scrollArea)
         self.setLayout(layout)
 
-    # def updateGraphs(self, netCashflowTable, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-    #                  yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, priceList, succRateList, NPVTable,
-    #                  irrCurrentPrice, NPVCurrentPrice, breakevenYearCurrentPrice,
-    #                  irrList, NPVList, NPVdata):
-    #     self.NPVHist.updatePlot(NPVdata = NPVdata)
-    #     self.IntervalChart.updatePlot(netCashflowTable, priceList)
-    #     self.outflowBarchart.updatePlot(yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-    #                                     yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice)
-    #     self.heatmap.updatePlot(priceList, succRateList, NPVTable)
-
-    #     self.irrBox.updatePlot('%0.2f%%' % (irrCurrentPrice*100))
-    #     self.NPVBox.updatePlot('$mm. %0.2f' % (NPVCurrentPrice/1000000))
-    #     self.BreakevenBox.updatePlot('%d' % breakevenYearCurrentPrice)
-    #     self.irrChart.updatePlot(irrList, priceList)
-    #     self.NPVChart.updatePlot(NPVList, priceList)
-
     def updateGraphs(self, NPVTable_diffPrices, IntervalData, priceList, priceListCross, succRateList, NPVTableCross, averageBreakevenYear, yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
-                     yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice):
+                     yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice, yearlyNetCashflowTableAllSamplesCurrentPrice, monthlyEachWellProdVolTable, maxExposureList):
         lowerLimit = np.percentile(np.array(NPVTable_diffPrices[2]), 5)/1000000
         upperLimit = np.percentile(np.array(NPVTable_diffPrices[2]), 95)/1000000
+        maxExposure = -np.mean(maxExposureList)/1000000
         NPVdifferentPrices = [np.mean(x)/1000000 for x in NPVTable_diffPrices]
 
         self.NPVBox.updatePlot('$ %0.2f million' % (np.mean(NPVTable_diffPrices[2])/1000000))
-        self.NPVciBox.updatePlot('$ %0.2f to %0.2f million' % (lowerLimit, upperLimit))
+        self.MaxExpoBox.updatePlot('$ %.2f million' % maxExposure)
         self.BreakevenBox.updatePlot('%0.1f years' % averageBreakevenYear)
 
-        self.NPVHist.updatePlot(NPVdata = NPVTable_diffPrices[2])
+        self.oilProdChart.updatePlot(monthlyEachWellProdVolTable = monthlyEachWellProdVolTable)
+        self.NPVHist.updatePlot(NPVdata = NPVTable_diffPrices[2], lowerLimit=lowerLimit, upperLimit=upperLimit)
+        self.AllNetCashflowChart.updatePlot(yearlyAverageNetCashflow=IntervalData[2], yearlyNetCashflowTableAllSamplesCurrentPrice=yearlyNetCashflowTableAllSamplesCurrentPrice)
         self.IntervalChart.updatePlot(priceList, IntervalData, NPVdifferentPrices)
         self.outflowBarchart.updatePlot(yearlyRoyaltyCurrentPrice, yearlyCapitalCurrentPrice, yearlyOpertExpenseCurrentPrice,
                                         yearlyBonusCurrentPrice, yearlyRentalCurrentPrice, yearlyIncomeTaxCurrentPrice)
         self.heatmap.updatePlot(priceListCross, succRateList, NPVTableCross)
+
 
 class HBox(QHBoxLayout):
     def __init__(self, *args):
